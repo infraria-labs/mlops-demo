@@ -1,0 +1,6 @@
+region = "us-west-2"
+kubernetes_version = "1.35"
+operator_arn = "arn:aws:iam::123456789012:role/demo-operator"
+operator_cidrs = ["203.0.113.10/32"] # Replace with your current public address.
+instance_types = ["t4g.large"] # ARM, 2 vCPU/8 GiB: application, Argo and monitoring.
+capacity_type = "ON_DEMAND" # SPOT is cheaper but interruption/capacity may delay the exercise.

@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: meteo-mlops
+  namespace: argocd
+  # No cascade finalizer: deleting registration must not delete workloads/data.
+spec:
+  project: meteo-mlops
+  source:
+    repoURL: https://github.com/infraria-labs/mlops-demo.git
+    targetRevision: inf-82-10-migrate-demonstrator-temporarily-to-amazon-eks
+    path: charts/meteo-mlops
+    helm:
+      releaseName: meteo-mlops
+      valueFiles:
+        - ../../gitops/eks/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: meteo-mlops
+  # Manual sync initially: Git changes/drift appear as OutOfSync for review.
+  syncPolicy:
+    syncOptions:
+      - FailOnSharedResource=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 1m
+  revisionHistoryLimit: 10

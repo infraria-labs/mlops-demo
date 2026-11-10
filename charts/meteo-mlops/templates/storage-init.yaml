@@ -1,0 +1,51 @@
+# local-path uses WaitForFirstConsumer. Bind training storage even when the
+# training CronJob is suspended, so Helm --wait can finish a fresh install.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-storage-{{ .Release.Revision }}
+  {{- if .Values.gitops.enabled }}
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+  {{- end }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  {{- if not .Values.gitops.enabled }}
+  ttlSecondsAfterFinished: 300
+  {{- end }}
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: storage-init
+          image: {{ include "meteo.image" (dict "image" .Values.images.training) | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          command: [python, -c, "from pathlib import Path; p=Path('/training/.helm-write-probe'); p.write_text('ok'); p.unlink()"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: training
+              mountPath: /training
+      volumes:
+        - name: training
+          persistentVolumeClaim:
+            claimName: training-data

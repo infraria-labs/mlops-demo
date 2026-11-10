@@ -1,0 +1,64 @@
+#!/bin/bash
+set -euo pipefail
+# cloud-init runs once; failure leaves k3s stopped rather than using root storage.
+dnf install -y jq xfsprogs
+# The standard AL2023 AMI includes AWS CLI v2.
+command -v aws >/dev/null
+systemctl enable --now amazon-ssm-agent
+volume_serial=$(echo '${volume_id}' | tr -d '-')
+device=''
+for attempt in $(seq 1 120); do
+  for candidate in /dev/nvme*n1; do
+    serial=$(lsblk -dn -o SERIAL "$candidate" | tr -d ' ')
+    if [ "$serial" = "$volume_serial" ]; then device="$candidate"; break; fi
+  done
+  [ -n "$device" ] && break
+  sleep 5
+done
+[ -n "$device" ] || { echo 'Data EBS did not attach' >&2; exit 1; }
+if ! blkid "$device" >/dev/null; then mkfs.xfs "$device"; fi
+mkdir -p /var/lib/rancher
+uuid=$(blkid -s UUID -o value "$device")
+echo "UUID=$uuid /var/lib/rancher xfs defaults 0 2" >> /etc/fstab
+mount /var/lib/rancher
+mkdir -p /etc/rancher/k3s /var/lib/rancher/credentialprovider/bin
+cat > /var/lib/rancher/credentialprovider/bin/ecr-login <<'PLUGIN'
+#!/bin/bash
+set -euo pipefail
+# kubelet invokes this on demand; no stored 12-hour ECR password or restart timer.
+cat >/dev/null
+password=$(aws ecr get-login-password --region '${region}')
+jq -n --arg password "$password" '{apiVersion:"credentialprovider.kubelet.k8s.io/v1",kind:"CredentialProviderResponse",cacheKeyType:"Registry",cacheDuration:"1h",auth:{"${registry}":{username:"AWS",password:$password}}}'
+PLUGIN
+chmod 700 /var/lib/rancher/credentialprovider/bin/ecr-login
+cat > /var/lib/rancher/credentialprovider/config.yaml <<'CONFIG'
+apiVersion: kubelet.config.k8s.io/v1
+kind: CredentialProviderConfig
+providers:
+- name: ecr-login
+  matchImages:
+  - '${registry}'
+  defaultCacheDuration: 1h
+  apiVersion: credentialprovider.kubelet.k8s.io/v1
+CONFIG
+cat > /etc/rancher/k3s/config.yaml <<'CONFIG'
+node-name: meteo-node
+bind-address: 0.0.0.0
+write-kubeconfig-mode: '0600'
+disable:
+- traefik
+- servicelb
+kubelet-arg:
+- 'image-credential-provider-config=/var/lib/rancher/credentialprovider/config.yaml'
+- 'image-credential-provider-bin-dir=/var/lib/rancher/credentialprovider/bin'
+CONFIG
+curl -fsSL https://get.k3s.io -o /tmp/install-k3s.sh
+INSTALL_K3S_VERSION='${k3s_version}' INSTALL_K3S_SKIP_START=true sh /tmp/install-k3s.sh
+mkdir -p /etc/systemd/system/k3s.service.d
+cat > /etc/systemd/system/k3s.service.d/storage.conf <<'CONFIG'
+[Unit]
+RequiresMountsFor=/var/lib/rancher
+After=network-online.target
+CONFIG
+systemctl daemon-reload
+systemctl enable --now k3s

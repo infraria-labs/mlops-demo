@@ -1,0 +1,26 @@
+name: Terraform foundation
+on:
+  push:
+    paths: ['infra/terraform/**', 'infra/eks/**', '.github/workflows/terraform.yml']
+  pull_request:
+    paths: ['infra/terraform/**', 'infra/eks/**', '.github/workflows/terraform.yml']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        directory: [infra/terraform, infra/eks]
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: '1.15.6'
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -lockfile=readonly
+      - run: terraform validate
+      - run: terraform test

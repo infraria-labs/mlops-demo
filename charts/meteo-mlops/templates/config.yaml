@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runtime-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  MODEL_PATH: /models/model.joblib
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_ARTIFACT_ROOT: mlflow-artifacts:/
+  MPLCONFIGDIR: /tmp/matplotlib
+  AWS_DEFAULT_REGION: {{ .Values.region | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: training-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  config.json: |
+    {{- .Values.training.config | toPrettyJson | nindent 4 }}

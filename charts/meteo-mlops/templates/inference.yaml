@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.inference.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: inference
+  template:
+    metadata:
+      labels:
+        app: inference
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      {{- if .Values.inference.registryVersion }}
+      initContainers:
+      - name: registry-model
+        image: {{ include "meteo.image" (dict "image" .Values.images.training) | quote }}
+        imagePullPolicy: {{ .Values.images.pullPolicy }}
+        command: [meteo-lifecycle, materialize, {{ .Values.inference.registryVersion | quote }}, --output, /models]
+        workingDir: /tmp
+        envFrom:
+        - configMapRef:
+            name: runtime-config
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        volumeMounts:
+        - name: model
+          mountPath: /models
+        - name: tmp
+          mountPath: /tmp
+      {{- end }}
+      containers:
+      - name: inference
+        image: {{ include "meteo.image" (dict "image" .Values.images.inference) | quote }}
+        imagePullPolicy: {{ .Values.images.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          {{- toYaml .Values.resources.inference | nindent 10 }}
+        env:
+        - name: MODEL_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: runtime-config
+              key: MODEL_PATH
+        {{- if .Values.inference.qualityConfigMap }}
+        - name: QUALITY_PATH
+          value: /verification/quality.json
+        {{- end }}
+        ports:
+        - name: http
+          containerPort: 8000
+        volumeMounts:
+        - name: model
+          mountPath: /models
+          readOnly: true
+        {{- if .Values.inference.qualityConfigMap }}
+        - name: verification
+          mountPath: /verification
+          readOnly: true
+        {{- end }}
+        startupProbe:
+          httpGet:
+            path: /ready
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      {{- if .Values.inference.qualityConfigMap }}
+      - name: verification
+        configMap:
+          name: {{ .Values.inference.qualityConfigMap | quote }}
+      {{- end }}
+      {{- if .Values.inference.registryVersion }}
+      - name: model
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      {{- else }}
+      - name: model
+        secret:
+          secretName: {{ required "modelSecret is required" .Values.modelSecret | quote }}
+          defaultMode: 292
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  selector:
+    app: inference
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http

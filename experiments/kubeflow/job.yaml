@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: meteo-job-reference
+  namespace: kubeflow
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+      - name: train
+        image: meteo-kfp-lab:v1
+        imagePullPolicy: Never
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        command: [sh, -ec]
+        args:
+        - |
+          python /lab/worker.py train --output /tmp/version
+          python /lab/worker.py evaluate --version "$(cat /tmp/version)" --output /tmp/decision
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: http://lab-mlflow:5000
+        - name: MLFLOW_ARTIFACT_ROOT
+          value: 'mlflow-artifacts:/'
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: '2'
+            memory: 1Gi

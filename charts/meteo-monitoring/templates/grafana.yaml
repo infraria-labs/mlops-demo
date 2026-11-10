@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-grafana
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: monitoring-grafana
+  template:
+    metadata:
+      labels:
+        app: monitoring-grafana
+      annotations:
+        checksum/config: '{{ include (print $.Template.BasePath "/config.yaml") .
+          | sha256sum }}'
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: grafana
+        image: {{ .Values.grafana.image | quote }}
+        args: []
+        ports:
+        - name: http
+          containerPort: 3000
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          {{- toYaml (index .Values.resources "grafana") | nindent 10 }}
+        volumeMounts:
+        - name: datasource
+          mountPath: /etc/grafana/provisioning/datasources
+          readOnly: true
+        - name: provider
+          mountPath: /etc/grafana/provisioning/dashboards
+          readOnly: true
+        - name: dashboard
+          mountPath: /var/lib/grafana/dashboards
+          readOnly: true
+        - name: data
+          mountPath: /var/lib/grafana
+        - name: tmp
+          mountPath: /tmp
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: admin
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: '{{ required "grafanaSecret is required" .Values.grafanaSecret
+                }}'
+              key: password
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: 'false'
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: 'false'
+        - name: GF_ANALYTICS_REPORTING_ENABLED
+          value: 'false'
+        - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+          value: 'false'
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 20
+      volumes:
+      - name: datasource
+        configMap:
+          name: monitoring-config
+          items:
+          - key: datasource.yaml
+            path: datasource.yaml
+      - name: provider
+        configMap:
+          name: monitoring-config
+          items:
+          - key: provider.yaml
+            path: provider.yaml
+      - name: dashboard
+        configMap:
+          name: monitoring-config
+          items:
+          - key: dashboard.json
+            path: dashboard.json
+      - name: data
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-grafana
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  type: ClusterIP
+  selector:
+    app: monitoring-grafana
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http

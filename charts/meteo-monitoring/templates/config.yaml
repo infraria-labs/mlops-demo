@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-config
+  namespace: {{ .Release.Namespace }}
+data:
+  prometheus.yaml: |
+    {{- tpl (.Files.Get "files/prometheus.yaml") . | nindent 4 }}
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      uid: prometheus
+      type: prometheus
+      access: proxy
+      url: http://monitoring-prometheus:9090
+      isDefault: true
+      editable: false
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+    - name: meteo
+      orgId: 1
+      type: file
+      disableDeletion: true
+      allowUiUpdates: false
+      options:
+        path: /var/lib/grafana/dashboards
+  dashboard.json: |
+    {{- .Files.Get "files/dashboard.json" | nindent 4 }}

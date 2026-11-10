@@ -1,0 +1,66 @@
+{{- if .Values.training.job.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.training.job.name | quote }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+      - name: training
+        image: {{ include "meteo.image" (dict "image" .Values.images.training) | quote }}
+        imagePullPolicy: {{ .Values.images.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        resources:
+          {{- toYaml .Values.resources.training | nindent 10 }}
+        command:
+        - sh
+        - -c
+        - cp /app/uv.lock /training/uv.lock && exec meteo-baseline run --evaluate --config /config/config.json
+          --data /training/raw --output /training/baseline
+        workingDir: /training
+        env:
+        - name: TRAINING_IMAGE
+          value: {{ include "meteo.image" (dict "image" .Values.images.training) | quote }}
+        envFrom:
+        - configMapRef:
+            name: runtime-config
+        volumeMounts:
+        - name: training
+          mountPath: /training
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: training
+        persistentVolumeClaim:
+          claimName: training-data
+      - name: config
+        configMap:
+          name: training-config
+      - name: tmp
+        emptyDir: {}
+      restartPolicy: Never
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+{{- end }}

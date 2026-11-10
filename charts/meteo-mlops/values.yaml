@@ -1,0 +1,81 @@
+images:
+  inference:
+    repository: meteo-inference
+    tag: k3d-v1
+  training:
+    repository: meteo-training
+    tag: k3d-v1
+  pullPolicy: Never
+modelSecret: inference-model
+region: us-west-2
+mlflow:
+  serviceAccount:
+    create: false
+    name: default
+  artifactDestination: /mlflow/artifacts
+storage:
+  className: local-path
+  size: 2Gi
+resources:
+  inference:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '2'
+      memory: 1Gi
+  training:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '2'
+      memory: 1Gi
+  mlflow:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '2'
+      memory: 1Gi
+training:
+  schedule: 0 3 * * 0
+  suspend: true
+  job:
+    enabled: false
+    name: training-manual
+  config:
+    ridge_alphas:
+    - 0.1
+    - 1.0
+    - 10.0
+    - 100.0
+    seed: 45
+    xgboost_candidates:
+    - n_estimators: 100
+      max_depth: 2
+      learning_rate: 0.05
+      min_child_weight: 20
+    - n_estimators: 200
+      max_depth: 3
+      learning_rate: 0.05
+      min_child_weight: 20
+    splits:
+      train:
+      - '2024-01-01'
+      - '2024-12-30'
+      validation:
+      - '2025-01-01'
+      - '2025-06-29'
+      test:
+      - '2025-07-01'
+      - '2026-01-01'
+    minimum_split_hours: 1000
+inference:
+  qualityConfigMap: ""
+  registryVersion: ""
+  replicas: 1
+
+# Enables Argo-specific storage hook handling; raw Helm labs keep their workflow.
+gitops:
+  enabled: false

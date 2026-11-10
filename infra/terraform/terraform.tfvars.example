@@ -1,0 +1,4 @@
+region = "us-west-2"
+environment = "demo"
+instance_type = "t4g.medium"
+data_volume_gib = 30

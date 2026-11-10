@@ -1,0 +1,61 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+scrape_configs:
+- job_name: inference
+  kubernetes_sd_configs:
+  - role: pod
+    namespaces:
+      names:
+      - '{{ .Release.Namespace }}'
+  relabel_configs:
+  - source_labels:
+    - __meta_kubernetes_pod_label_app
+    regex: inference
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_pod_container_port_name
+    regex: http
+    action: keep
+  - source_labels:
+    - __meta_kubernetes_pod_name
+    target_label: pod
+  sample_limit: 2000
+- job_name: kube-state-metrics
+  static_configs:
+  - targets:
+    - monitoring-kube-state-metrics:8080
+  sample_limit: 10000
+- job_name: prometheus
+  static_configs:
+  - targets:
+    - localhost:9090
+  sample_limit: 5000
+- job_name: cadvisor
+  scheme: https
+  authorization:
+    credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+  tls_config:
+    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  kubernetes_sd_configs:
+  - role: node
+  relabel_configs:
+  - target_label: __address__
+    replacement: kubernetes.default.svc:443
+  - source_labels:
+    - __meta_kubernetes_node_name
+    target_label: node
+  - source_labels:
+    - __meta_kubernetes_node_name
+    target_label: __metrics_path__
+    replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+  metric_relabel_configs:
+  - source_labels:
+    - namespace
+    regex: '{{ .Release.Namespace }}'
+    action: keep
+  - source_labels:
+    - __name__
+    regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes
+    action: keep
+  sample_limit: 10000

@@ -1,0 +1,33 @@
+storageClassName: local-path
+grafanaSecret: monitoring-grafana
+prometheus:
+  image: prom/prometheus:v3.2.1
+  retention: 48h
+  retentionSize: 512MB
+  storageSize: 1Gi
+grafana:
+  image: grafana/grafana:11.6.0
+kubeStateMetrics:
+  image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0
+resources:
+  prometheus:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  grafana:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  kube-state-metrics:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 500m
+      memory: 128Mi

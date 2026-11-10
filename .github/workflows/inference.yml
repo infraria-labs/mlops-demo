@@ -1,0 +1,131 @@
+name: Quality, images and GitOps release
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore: ['gitops/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: '0.6.17'
+          python-version: '3.12'
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run --locked ruff check .
+      - run: uv run --locked pytest
+      - uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.17.3
+      - run: uv run --locked pytest tests/test_helm.py tests/test_observability.py tests/test_gitops.py
+  images:
+    needs: quality
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [inference, training]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: '0.6.17'
+          python-version: '3.12'
+          enable-cache: true
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          load: true
+          tags: meteo-${{ matrix.target }}:smoke
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+      - if: matrix.target == 'inference'
+        run: uv run --locked python scripts/container_smoke.py --skip-build
+      - if: matrix.target == 'training'
+        run: uv run --locked python scripts/training_container_smoke.py --image meteo-training:smoke
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ENABLE_AWS_RELEASE == 'true'
+    needs: images
+    runs-on: ubuntu-24.04
+    environment: aws-demo
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      INFERENCE_REPOSITORY: ${{ vars.INFERENCE_REPOSITORY }}
+      TRAINING_REPOSITORY: ${{ vars.TRAINING_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2.1.7
+      - uses: docker/setup-qemu-action@v4.4.0
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: '0.6.17'
+          python-version: '3.12'
+      - name: Publish immutable multi-platform images (safe to retry)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in inference training; do
+            if [ "$target" = inference ]; then repository="$INFERENCE_REPOSITORY"; else repository="$TRAINING_REPOSITORY"; fi
+            test -n "$repository"
+            if aws ecr describe-images --repository-name "${repository#*/}" --image-ids "imageTag=$GITHUB_SHA" > /tmp/image.json 2>/tmp/ecr-error; then
+              echo "Already published $target:$GITHUB_SHA"
+            elif grep -q ImageNotFoundException /tmp/ecr-error; then
+              docker buildx build --target "$target" --platform linux/amd64,linux/arm64 \
+                --cache-from "type=gha,scope=$target" --tag "$repository:$GITHUB_SHA" --push .
+            else
+              cat /tmp/ecr-error >&2
+              exit 1
+            fi
+          done
+      - name: Propose immutable image desired state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Read latest desired state after publishing; never overwrite model/config changes.
+          git fetch origin main
+          git checkout -B "gitops/release-$GITHUB_SHA" origin/main
+          uv run --locked python scripts/gitops_release.py --sha "$GITHUB_SHA"
+          if git diff --quiet -- gitops/aws/values.yaml; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add gitops/aws/values.yaml
+          git commit -m "release(app): images $GITHUB_SHA; preserve selected model"
+          branch="gitops/release-$GITHUB_SHA"
+          # Retries reuse the existing PR; fail if a concurrently edited branch differs.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            git diff --exit-code FETCH_HEAD HEAD -- gitops/aws/values.yaml
+          else
+            git push origin "HEAD:refs/heads/$branch"
+          fi
+          if [ -z "$(gh pr list --head "$branch" --base main --state open --json number --jq '.[].number')" ]; then
+            cat > /tmp/gitops-pr.md <<EOF
+          Published inference and training images tagged $GITHUB_SHA after CI quality and container gates.
+
+          Merge updates gitops/aws/values.yaml. Review Argo CD diff, sync manually, and verify health/readiness.
+          Model selection and verification references are unchanged. Revert this desired-state commit for rollback.
+          EOF
+            gh pr create --base main --head "$branch" \
+              --title "release(app): images $GITHUB_SHA" --body-file /tmp/gitops-pr.md
+          fi

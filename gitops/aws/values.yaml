@@ -1,0 +1,60 @@
+# AWS desired state. Image releases change only the two immutable tags.
+# Model and verification references are explicit, independent operator choices.
+region: us-west-2
+images:
+  pullPolicy: IfNotPresent
+  inference:
+    repository: 123456789012.dkr.ecr.us-west-2.amazonaws.com/meteo-mlops-demo/inference
+    tag: 27c690bf43483b71e97e0c4a378c42ed9ed90bbf
+  training:
+    repository: 123456789012.dkr.ecr.us-west-2.amazonaws.com/meteo-mlops-demo/training
+    tag: 27c690bf43483b71e97e0c4a378c42ed9ed90bbf
+modelSecret: inference-model-249d1d104e0e
+mlflow:
+  artifactDestination: s3://meteo-mlops-demo-123456789012-us-west-2/mlflow
+storage:
+  className: local-path
+  size: 2Gi
+gitops:
+  enabled: true
+inference:
+  registryVersion: "7"
+  qualityConfigMap: inference-verification
+training:
+  schedule: 0 3 * * 0
+  suspend: false
+  config:
+    ridge_alphas:
+    - 0.1
+    - 1.0
+    - 10.0
+    - 100.0
+    seed: 45
+    xgboost_candidates:
+    - n_estimators: 100
+      max_depth: 2
+      learning_rate: 0.05
+      min_child_weight: 20
+    - n_estimators: 200
+      max_depth: 3
+      learning_rate: 0.05
+      min_child_weight: 20
+    splits:
+      train:
+      - '2024-01-01'
+      - '2024-12-30'
+      validation:
+      - '2025-01-01'
+      - '2025-06-29'
+      test:
+      - '2025-07-01'
+      - '2026-01-01'
+    minimum_split_hours: 1000
+    features:
+    - forecast_c
+    - hour_sin
+    - hour_cos
+    - year_sin
+    - year_cos
+    - pressure_msl_hpa
+    rolling_window: true

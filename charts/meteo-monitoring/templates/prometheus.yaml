@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitoring-prometheus
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: monitoring-prometheus
+  template:
+    metadata:
+      labels:
+        app: monitoring-prometheus
+      annotations:
+        checksum/config: '{{ include (print $.Template.BasePath "/config.yaml") .
+          | sha256sum }}'
+    spec:
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: prometheus
+        image: {{ .Values.prometheus.image | quote }}
+        args:
+        - --config.file=/etc/prometheus/prometheus.yaml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time={{ .Values.prometheus.retention }}
+        - --storage.tsdb.retention.size={{ .Values.prometheus.retentionSize }}
+        ports:
+        - name: http
+          containerPort: 9090
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          {{- toYaml (index .Values.resources "prometheus") | nindent 10 }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
+          readOnly: true
+        - name: data
+          mountPath: /prometheus
+        env: []
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 20
+      volumes:
+      - name: config
+        configMap:
+          name: monitoring-config
+          items:
+          - key: prometheus.yaml
+            path: prometheus.yaml
+      - name: data
+        persistentVolumeClaim:
+          claimName: monitoring-prometheus
+      serviceAccountName: monitoring-prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-prometheus
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  type: ClusterIP
+  selector:
+    app: monitoring-prometheus
+  ports:
+  - name: http
+    port: 9090
+    targetPort: http

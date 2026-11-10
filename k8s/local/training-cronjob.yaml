@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: training
+  namespace: meteo-mlops
+spec:
+  schedule: 0 3 * * 0
+  timeZone: Etc/UTC
+  suspend: true
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+          containers:
+          - name: training
+            image: meteo-inference:k3d-v1
+            imagePullPolicy: Never
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              readOnlyRootFilesystem: true
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: '2'
+                memory: 1Gi
+            command:
+            - sh
+            - -c
+            - cp /app/uv.lock /training/uv.lock && exec meteo-baseline run --evaluate --config
+              /config/config.json --data /training/raw --output /training/baseline
+            workingDir: /training
+            envFrom:
+            - configMapRef:
+                name: runtime-config
+            volumeMounts:
+            - name: training
+              mountPath: /training
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          - name: training
+            persistentVolumeClaim:
+              claimName: training-data
+          - name: config
+            configMap:
+              name: training-config
+          - name: tmp
+            emptyDir: {}
+          restartPolicy: Never

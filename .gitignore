@@ -1,0 +1,34 @@
+.venv/
+__pycache__/
+.pytest_cache/
+data/
+artifacts/
+
+.mlflow/
+mlruns/
+
+.k3d/
+
+# Terraform state, plans and local AWS kubeconfig contain sensitive information.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+.aws-k3s/
+
+.eks/
+
+# Disposable local Kubeflow learning environment.
+.kfp-lab/
+
+# Local credentials and tooling caches
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.ruff_cache/
+.DS_Store

@@ -1,0 +1,23 @@
+# Reuse immutable ARM application images; regenerate artifactDestination from EKS outputs.
+region: us-west-2
+images:
+  pullPolicy: IfNotPresent
+  inference:
+    repository: 123456789012.dkr.ecr.us-west-2.amazonaws.com/meteo-mlops-demo/inference
+    tag: ab584cd25aed4f2895d15125660309d457d6c4da
+  training:
+    repository: 123456789012.dkr.ecr.us-west-2.amazonaws.com/meteo-mlops-demo/training
+    tag: ab584cd25aed4f2895d15125660309d457d6c4da
+modelSecret: inference-model-15227624da3a
+mlflow:
+  artifactDestination: s3://meteo-mlops-eks-exercise-123456789012-us-west-2/mlflow
+  serviceAccount:
+    create: true
+    name: mlflow
+storage:
+  className: eks-gp3
+  size: 2Gi
+gitops:
+  enabled: true
+training:
+  suspend: true

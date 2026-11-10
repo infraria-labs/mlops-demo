@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: meteo-mlops
+  namespace: argocd
+spec:
+  description: Meteorological MLOps demonstrator; namespace-scoped workloads only
+  sourceRepos:
+    - https://github.com/infraria-labs/mlops-demo.git
+  destinations:
+    - namespace: meteo-mlops
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: ServiceAccount
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: PersistentVolumeClaim
+    - group: apps
+      kind: Deployment
+    - group: batch
+      kind: CronJob
+    - group: batch
+      kind: Job

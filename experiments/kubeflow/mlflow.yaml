@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lab-mlflow-data
+  namespace: kubeflow
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lab-mlflow
+  namespace: kubeflow
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: lab-mlflow
+  template:
+    metadata:
+      labels:
+        app: lab-mlflow
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+      - name: lab-mlflow
+        image: meteo-kfp-lab:v1
+        imagePullPolicy: Never
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: '2'
+            memory: 1Gi
+        command:
+        - mlflow
+        - server
+        - --host
+        - 0.0.0.0
+        - --port
+        - '5000'
+        - --workers
+        - '1'
+        - --backend-store-uri
+        - sqlite:////mlflow/mlflow.db
+        - --serve-artifacts
+        - --artifacts-destination
+        - /mlflow/artifacts
+        - --default-artifact-root
+        - mlflow-artifacts:/
+        ports:
+        - name: http
+          containerPort: 5000
+        volumeMounts:
+        - name: state
+          mountPath: /mlflow
+        - name: tmp
+          mountPath: /tmp
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 6
+      volumes:
+      - name: state
+        persistentVolumeClaim:
+          claimName: lab-mlflow-data
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lab-mlflow
+  namespace: kubeflow
+spec:
+  selector:
+    app: lab-mlflow
+  ports:
+  - name: http
+    port: 5000
+    targetPort: http

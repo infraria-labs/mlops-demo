@@ -1,0 +1,5 @@
+{
+  "data": {
+    "workflowDefaults": "spec:\n  ttlStrategy:\n    secondsAfterCompletion: 3600\n    secondsAfterSuccess: 3600\n    secondsAfterFailure: 3600\n  templateDefaults:\n    retryStrategy:\n      limit: '0'\n      retryPolicy: Always\n"
+  }
+}

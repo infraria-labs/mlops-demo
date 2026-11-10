@@ -1,0 +1,12 @@
+alpine:3.23
+rancher/mirrored-library-busybox:1.37.0
+mysql:8.4
+ghcr.io/chrislusf/seaweedfs:4.34
+ghcr.io/kubeflow/kfp-api-server:2.17.0
+ghcr.io/kubeflow/kfp-frontend:2.17.0
+ghcr.io/kubeflow/kfp-metadata-envoy:2.17.0
+ghcr.io/kubeflow/kfp-persistence-agent:2.17.0
+quay.io/argoproj/workflow-controller:v4.0.5
+quay.io/argoproj/argoexec:v4.0.5
+ghcr.io/kubeflow/kfp-launcher:2.17.0
+ghcr.io/kubeflow/kfp-driver:2.17.0

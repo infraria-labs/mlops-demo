@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: runtime-config
+  namespace: meteo-mlops
+data:
+  MODEL_PATH: /models/model.joblib
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_ARTIFACT_ROOT: mlflow-artifacts:/
+  MPLCONFIGDIR: /tmp/matplotlib
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: training-config
+  namespace: meteo-mlops
+data:
+  config.json: "{\n  \"ridge_alphas\": [0.1, 1.0, 10.0, 100.0],\n  \"seed\": 45,\n\
+    \  \"xgboost_candidates\": [\n    {\"n_estimators\": 100, \"max_depth\": 2, \"\
+    learning_rate\": 0.05, \"min_child_weight\": 20},\n    {\"n_estimators\": 200,\
+    \ \"max_depth\": 3, \"learning_rate\": 0.05, \"min_child_weight\": 20}\n  ],\n\
+    \  \"splits\": {\n    \"train\": [\"2024-01-01\", \"2024-12-30\"],\n    \"validation\"\
+    : [\"2025-01-01\", \"2025-06-29\"],\n    \"test\": [\"2025-07-01\", \"2026-01-01\"\
+    ]\n  },\n  \"minimum_split_hours\": 1000\n}\n"

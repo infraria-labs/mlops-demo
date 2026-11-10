@@ -1,0 +1,17 @@
+# Current AWS demonstrator values. CI overrides tags with the release Git SHA
+# and preserves the live Deployment's model-secret reference.
+region: us-west-2
+images:
+  pullPolicy: IfNotPresent
+  inference:
+    repository: 123456789012.dkr.ecr.us-west-2.amazonaws.com/meteo-mlops-demo/inference
+    tag: inf61-20261006-v1
+  training:
+    repository: 123456789012.dkr.ecr.us-west-2.amazonaws.com/meteo-mlops-demo/training
+    tag: inf61-20261006-v1
+modelSecret: inference-model-249d1d104e0e
+mlflow:
+  artifactDestination: s3://meteo-mlops-demo-123456789012-us-west-2/mlflow
+storage:
+  className: local-path
+  size: 2Gi

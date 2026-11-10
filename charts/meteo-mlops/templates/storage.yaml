@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- if .Values.gitops.enabled }}
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    {{- end }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: {{ .Values.storage.className | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.size | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- if .Values.gitops.enabled }}
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    {{- end }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: {{ .Values.storage.className | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.size | quote }}

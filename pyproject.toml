@@ -1,0 +1,39 @@
+[project]
+name = "meteo-mlops"
+version = "0.1.0"
+description = "Reproducible station temperature forecast recalibration baseline"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "numpy==2.2.6",
+    "pandas==2.2.3",
+    "scikit-learn==1.6.1",
+    "joblib==1.4.2",
+    "xgboost==3.0.5",
+    "fastapi==0.115.12",
+    "uvicorn==0.34.2",
+    "prometheus-client==0.22.1",
+    "mlflow==3.1.4",
+    "sqlalchemy==2.0.43",
+    "boto3==1.40.45",
+]
+
+[project.scripts]
+meteo-quality = "meteo_mlops.quality:main"
+meteo-lifecycle = "meteo_mlops.lifecycle:main"
+meteo-tracking = "meteo_mlops.tracking:main"
+meteo-baseline = "meteo_mlops.baseline:main"
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "httpx==0.28.1",
+    "pytest==8.3.5",
+    "pyyaml==6.0.3",
+    "ruff==0.11.13",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
