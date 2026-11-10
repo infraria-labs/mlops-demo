@@ -75,6 +75,22 @@ def test_ci_has_no_direct_cluster_deployment():
     assert 'scripts/gitops_release.py' in steps
     assert 'gh pr create' in steps
     assert all(forbidden not in steps for forbidden in ('ci_deploy', 'kubectl', 'helm upgrade', 'ssm'))
-    assert 'gitops/**' in workflow['on']['push']['paths-ignore']
+    assert 'paths-ignore' not in workflow['on']['push']
     assert 'INSTANCE_ID' not in job['env']
     assert job['permissions']['pull-requests'] == 'write'
+
+
+@pytest.mark.parametrize('filename', ['inference.yml', 'terraform.yml'])
+def test_required_ci_runs_for_every_pr_with_pinned_actions(filename):
+    """Required checks must report on every PR and use immutable action code."""
+    import re
+
+    workflow = yaml.load(Path('.github/workflows', filename).read_text(), Loader=yaml.BaseLoader)
+    for event in ('push', 'pull_request'):
+        options = workflow['on'][event] or {}
+        assert not {'paths', 'paths-ignore'} & options.keys()
+    assert 'pull_request_target' not in workflow['on']
+    for job in workflow['jobs'].values():
+        for step in job['steps']:
+            if 'uses' in step:
+                assert re.fullmatch(r'[\w.-]+/[\w.-]+@[a-f0-9]{40}', step['uses'])
