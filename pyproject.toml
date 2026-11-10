@@ -7,7 +7,7 @@ dependencies = [
     "numpy==2.2.6",
     "pandas==2.2.3",
     "scikit-learn==1.6.1",
-    "joblib==1.4.2",
+    "joblib==1.6.0",
     "xgboost==3.0.5",
     "fastapi==0.115.12",
     "uvicorn==0.34.2",
