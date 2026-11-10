@@ -12,7 +12,7 @@ dependencies = [
     "fastapi==0.115.12",
     "uvicorn==0.34.2",
     "prometheus-client==0.22.1",
-    "mlflow==3.1.4",
+    "mlflow==3.18.0",
     "sqlalchemy==2.0.43",
     "boto3==1.40.45",
 ]
