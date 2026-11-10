@@ -1,5 +1,5 @@
 FROM ghcr.io/astral-sh/uv:0.6.17@sha256:4a6c9444b126bd325fba904bff796bf91fb777bf6148d60109c4cb1de2ffc497 AS uv
-FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS build
+FROM python:3.15.0-slim-bookworm@sha256:0e019bbdfb5d9874cb2389f1c2884b64aa2ac97c99960b5bc521cef978c0617d AS build
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
@@ -7,7 +7,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 RUN uv sync --locked --no-dev --no-editable --no-cache
 
-FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS training
+FROM python:3.15.0-slim-bookworm@sha256:0e019bbdfb5d9874cb2389f1c2884b64aa2ac97c99960b5bc521cef978c0617d AS training
 WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY --from=build /app/.venv /app/.venv
@@ -16,7 +16,7 @@ USER 10001:10001
 ENTRYPOINT ["meteo-baseline"]
 CMD ["--help"]
 
-FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS inference
+FROM python:3.15.0-slim-bookworm@sha256:0e019bbdfb5d9874cb2389f1c2884b64aa2ac97c99960b5bc521cef978c0617d AS inference
 WORKDIR /app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MODEL_PATH=/models/model.joblib
 COPY --from=build /app/.venv /app/.venv
