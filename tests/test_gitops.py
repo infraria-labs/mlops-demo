@@ -75,6 +75,57 @@ def test_ci_has_no_direct_cluster_deployment():
     assert 'scripts/gitops_release.py' in steps
     assert 'gh pr create' in steps
     assert all(forbidden not in steps for forbidden in ('ci_deploy', 'kubectl', 'helm upgrade', 'ssm'))
-    assert 'gitops/**' in workflow['on']['push']['paths-ignore']
+    assert 'paths-ignore' not in workflow['on']['push']
     assert 'INSTANCE_ID' not in job['env']
     assert job['permissions']['pull-requests'] == 'write'
+
+
+@pytest.mark.parametrize('filename', ['inference.yml', 'terraform.yml'])
+def test_required_ci_runs_for_every_pr_with_pinned_actions(filename):
+    """Required checks must report on every PR and use immutable action code."""
+    import re
+
+    workflow = yaml.load(Path('.github/workflows', filename).read_text(), Loader=yaml.BaseLoader)
+    for event in ('push', 'pull_request'):
+        options = workflow['on'][event] or {}
+        assert not {'paths', 'paths-ignore'} & options.keys()
+    assert 'pull_request_target' not in workflow['on']
+    for job in workflow['jobs'].values():
+        for step in job['steps']:
+            if 'uses' in step:
+                assert re.fullmatch(r'[\w.-]+/[\w.-]+@[a-f0-9]{40}', step['uses'])
+
+
+@pytest.mark.parametrize(('paths', 'publish'), [
+    (['gitops/aws/values.yaml'], False),
+    (['gitops/aws/values.yaml', 'src/example.py'], True),
+    (['src/example.py'], True),
+])
+@pytest.mark.parametrize('event', ['push', 'workflow_dispatch', 'initial_push'])
+def test_gitops_only_push_cannot_create_release_loop(tmp_path, paths, publish, event):
+    """Execute the actual workflow guard against real commit diffs."""
+    import os
+
+    workflow = yaml.load(Path('.github/workflows/inference.yml').read_text(), Loader=yaml.BaseLoader)
+    assert "needs.release-scope.outputs.publish == 'true'" in workflow['jobs']['release']['if']
+    scope = workflow['jobs']['release-scope']
+    script = next(step['run'] for step in scope['steps'] if step.get('id') == 'scope')
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    env = dict(os.environ, GIT_AUTHOR_NAME='Test', GIT_COMMITTER_NAME='Test',
+               GIT_AUTHOR_EMAIL='test@example.invalid', GIT_COMMITTER_EMAIL='test@example.invalid')
+    subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'base'], cwd=tmp_path, env=env, check=True)
+    before = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, text=True).strip()
+    for name in paths:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('change\n')
+    subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True)
+    subprocess.run(['git', 'commit', '-qm', 'change'], cwd=tmp_path, env=env, check=True)
+    after = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, text=True).strip()
+    output = tmp_path / 'output'
+    subprocess.run(['bash', '-c', script], cwd=tmp_path, check=True,
+                   env=dict(env, EVENT_NAME='push' if event == 'initial_push' else event,
+                            BEFORE_SHA='0' * 40 if event == 'initial_push' else before,
+                            GITHUB_SHA=after, GITHUB_OUTPUT=str(output)))
+    expected = publish or event != 'push'
+    assert output.read_text().strip() == f'publish={str(expected).lower()}'
