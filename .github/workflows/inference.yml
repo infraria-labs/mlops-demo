@@ -52,9 +52,31 @@ jobs:
         run: uv run --locked python scripts/container_smoke.py --skip-build
       - if: matrix.target == 'training'
         run: uv run --locked python scripts/training_container_smoke.py --image meteo-training:smoke
-  release:
+  release-scope:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ENABLE_AWS_RELEASE == 'true'
-    needs: images
+    runs-on: ubuntu-24.04
+    outputs:
+      publish: ${{ steps.scope.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish=true
+          if [[ "$EVENT_NAME" == push && ! "$BEFORE_SHA" =~ ^0+$ ]]; then
+            changes="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" -- . ':!gitops/**')"
+            if [[ -z "$changes" ]]; then publish=false; fi
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ENABLE_AWS_RELEASE == 'true' && needs.release-scope.outputs.publish == 'true'
+    needs: [images, release-scope]
     runs-on: ubuntu-24.04
     environment: aws-demo
     permissions:

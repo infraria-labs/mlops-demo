@@ -94,3 +94,38 @@ def test_required_ci_runs_for_every_pr_with_pinned_actions(filename):
         for step in job['steps']:
             if 'uses' in step:
                 assert re.fullmatch(r'[\w.-]+/[\w.-]+@[a-f0-9]{40}', step['uses'])
+
+
+@pytest.mark.parametrize(('paths', 'publish'), [
+    (['gitops/aws/values.yaml'], False),
+    (['gitops/aws/values.yaml', 'src/example.py'], True),
+    (['src/example.py'], True),
+])
+@pytest.mark.parametrize('event', ['push', 'workflow_dispatch', 'initial_push'])
+def test_gitops_only_push_cannot_create_release_loop(tmp_path, paths, publish, event):
+    """Execute the actual workflow guard against real commit diffs."""
+    import os
+
+    workflow = yaml.load(Path('.github/workflows/inference.yml').read_text(), Loader=yaml.BaseLoader)
+    assert "needs.release-scope.outputs.publish == 'true'" in workflow['jobs']['release']['if']
+    scope = workflow['jobs']['release-scope']
+    script = next(step['run'] for step in scope['steps'] if step.get('id') == 'scope')
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    env = dict(os.environ, GIT_AUTHOR_NAME='Test', GIT_COMMITTER_NAME='Test',
+               GIT_AUTHOR_EMAIL='test@example.invalid', GIT_COMMITTER_EMAIL='test@example.invalid')
+    subprocess.run(['git', 'commit', '--allow-empty', '-qm', 'base'], cwd=tmp_path, env=env, check=True)
+    before = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, text=True).strip()
+    for name in paths:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('change\n')
+    subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True)
+    subprocess.run(['git', 'commit', '-qm', 'change'], cwd=tmp_path, env=env, check=True)
+    after = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, text=True).strip()
+    output = tmp_path / 'output'
+    subprocess.run(['bash', '-c', script], cwd=tmp_path, check=True,
+                   env=dict(env, EVENT_NAME='push' if event == 'initial_push' else event,
+                            BEFORE_SHA='0' * 40 if event == 'initial_push' else before,
+                            GITHUB_SHA=after, GITHUB_OUTPUT=str(output)))
+    expected = publish or event != 'push'
+    assert output.read_text().strip() == f'publish={str(expected).lower()}'
